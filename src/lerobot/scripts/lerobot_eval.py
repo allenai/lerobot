@@ -93,6 +93,34 @@ from lerobot.utils.utils import (
 )
 
 
+def _policy_uses_rollout_action_generator(policy: PreTrainedPolicy) -> bool:
+    config = getattr(policy, "config", None)
+    policy_type = str(
+        getattr(config, "type", "")
+        or getattr(policy, "name", "")
+        or policy.__class__.__name__
+    ).lower()
+    return policy_type in {"molmoact2"}
+
+
+def _make_rollout_action_generator(
+    policy: PreTrainedPolicy,
+    seeds: list[int] | None,
+) -> torch.Generator | None:
+    if not seeds or not _policy_uses_rollout_action_generator(policy):
+        return None
+    config = getattr(policy, "config", None)
+    device = torch.device(str(getattr(config, "device", "cpu") or "cpu"))
+    if device.type == "cuda" and not torch.cuda.is_available():
+        device = torch.device("cpu")
+    seed = 0
+    for idx, value in enumerate(seeds):
+        seed = (seed + (idx + 1) * int(value)) % (2**63 - 1)
+    generator = torch.Generator(device=device)
+    generator.manual_seed(seed)
+    return generator
+
+
 def rollout(
     env: gym.vector.VectorEnv,
     policy: PreTrainedPolicy,
@@ -140,6 +168,7 @@ def rollout(
     # Reset the policy and environments.
     policy.reset()
     observation, info = env.reset(seed=seeds)
+    action_generator = _make_rollout_action_generator(policy, seeds)
     if render_callback is not None:
         render_callback(env)
 
@@ -175,7 +204,10 @@ def rollout(
 
         observation = preprocessor(observation)
         with torch.inference_mode():
-            action = policy.select_action(observation)
+            if action_generator is None:
+                action = policy.select_action(observation)
+            else:
+                action = policy.select_action(observation, generator=action_generator)
         action = postprocessor(action)
 
         action_transition = {ACTION: action}
@@ -533,6 +565,10 @@ def eval_main(cfg: EvalPipelineConfig):
     )
 
     policy.eval()
+    if cfg.seed is not None:
+        # Policy construction can advance the global torch RNG by a loader-specific
+        # amount. Reset here so stochastic action generators start from the eval seed.
+        set_seed(cfg.seed)
 
     # The inference device is automatically set to match the detected hardware, overriding any previous device settings from training to ensure compatibility.
     preprocessor_overrides = {
