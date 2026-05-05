@@ -15,6 +15,7 @@
 from .act.configuration_act import ACTConfig as ACTConfig
 from .diffusion.configuration_diffusion import DiffusionConfig as DiffusionConfig
 from .groot.configuration_groot import GrootConfig as GrootConfig
+from .molmoact2.configuration_molmoact2 import MolmoAct2Config as MolmoAct2Config
 from .multi_task_dit.configuration_multi_task_dit import MultiTaskDiTConfig as MultiTaskDiTConfig
 from .pi0.configuration_pi0 import PI0Config as PI0Config
 from .pi0_fast.configuration_pi0_fast import PI0FastConfig as PI0FastConfig
@@ -38,6 +39,7 @@ __all__ = [
     "TDMPCConfig",
     "VQBeTConfig",
     "GrootConfig",
+    "MolmoAct2Config",
     "XVLAConfig",
     "WallXConfig",
 ]
