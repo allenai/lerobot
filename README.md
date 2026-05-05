@@ -126,6 +126,54 @@ lerobot-eval \
 
 Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
 
+## MolmoAct2
+
+This fork adds a minimal `molmoact2` policy wrapper for Hugging Face MolmoAct2 checkpoints, with the goal of reproducing LIBERO evaluation results. The wrapper is inference-only: it loads a converted HF model checkpoint with `AutoProcessor` and `AutoModelForImageTextToText`, passes LIBERO observations into the checkpoint's `predict_action(...)`, and keeps normalization/action scaling inside the HF checkpoint. `checkpoint_path` can be either a local converted checkpoint directory or an HF model repo id such as `user/model`.
+
+The wrapper uses the current MolmoAct2 HF inference flags: `enable_depth_reasoning`, `enable_adaptive_depth`, `enable_cuda_graph`, and `normalize_language`. CUDA graph inference is enabled by default, so the first few calls can be slower while graphs are captured; warm up with a few rollout steps before timing. Older `use_depth_reasoning` / `use_adaptive_depth` eval YAMLs are still accepted as compatibility aliases.
+
+For reproducibility, this fork also updates evaluation seeding for `molmoact2`. LIBERO eval is often run with parallel/vectorized environments, so a single global RNG state makes results harder to reproduce across different batch sizes and sharding. During evaluation, each episode gets a deterministic seed derived from `cfg.seed`. For `molmoact2`, that per-episode seed is also used to create the `torch.Generator` passed into the HF model action sampler. Set `OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` when reproducing reported LIBERO numbers, since CPU-side numeric/simulator threading can change closed-loop outcomes.
+
+Example LIBERO evaluation:
+
+```bash
+export MUJOCO_GL=egl
+export PYOPENGL_PLATFORM=egl
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export HF_TOKEN=<your_fine_grained_hf_token>
+
+# MolmoAct2
+lerobot-eval \
+  --policy.type=molmoact2 \
+  --policy.checkpoint_path=allenai/MolmoAct2-LIBERO \
+  --policy.action_mode=continuous \
+  --policy.enable_cuda_graph=True \
+  --policy.norm_tag=libero \
+  --policy.device=cuda \
+  --env.type=libero \
+  --env.task=libero_10,libero_goal,libero_object,libero_spatial \
+  --eval.batch_size=1 \
+  --eval.n_episodes=50 \
+  --seed=1000
+
+# MolmoAct2-Think
+lerobot-eval \
+  --policy.type=molmoact2 \
+  --policy.checkpoint_path=allenai/MolmoAct2-Think-LIBERO \
+  --policy.action_mode=continuous \
+  --policy.enable_depth_reasoning=True \
+  --policy.enable_adaptive_depth=True \
+  --policy.enable_cuda_graph=True \
+  --policy.norm_tag=libero \
+  --policy.device=cuda \
+  --env.type=libero \
+  --env.task=libero_10,libero_goal,libero_object,libero_spatial \
+  --eval.batch_size=1 \
+  --eval.n_episodes=50 \
+  --seed=1000
+```
+
 ## Resources
 
 - **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
