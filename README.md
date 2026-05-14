@@ -130,6 +130,8 @@ Learn how to implement your own simulation environment or benchmark and distribu
 
 This fork adds a minimal `molmoact2` policy wrapper for Hugging Face MolmoAct2 checkpoints, with the goal of reproducing LIBERO evaluation results. The wrapper is inference-only: it loads a converted HF model checkpoint with `AutoProcessor` and `AutoModelForImageTextToText`, passes LIBERO observations into the checkpoint's `predict_action(...)`, and keeps normalization/action scaling inside the HF checkpoint. `checkpoint_path` can be either a local converted checkpoint directory or an HF model repo id such as `user/model`.
 
+This branch is pinned to LeRobot `v0.5.1` to match exactly the version used for evaluation in our experiments.
+
 The wrapper uses the current MolmoAct2 HF inference flags: `enable_depth_reasoning`, `enable_adaptive_depth`, `enable_cuda_graph`, and `normalize_language`. CUDA graph inference is enabled by default, so the first few calls can be slower while graphs are captured; warm up with a few rollout steps before timing. Older `use_depth_reasoning` / `use_adaptive_depth` eval YAMLs are still accepted as compatibility aliases.
 
 For reproducibility, this fork also updates evaluation seeding for `molmoact2`. LIBERO eval is often run with parallel/vectorized environments, so a single global RNG state makes results harder to reproduce across different batch sizes and sharding. During evaluation, each episode gets a deterministic seed derived from `cfg.seed`. For `molmoact2`, that per-episode seed is also used to create the `torch.Generator` passed into the HF model action sampler. Set `OMP_NUM_THREADS=1` and `MKL_NUM_THREADS=1` when reproducing reported LIBERO numbers, since CPU-side numeric/simulator threading can change closed-loop outcomes.
@@ -141,7 +143,6 @@ export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export HF_TOKEN=<your_fine_grained_hf_token>
 
 # MolmoAct2
 lerobot-eval \
