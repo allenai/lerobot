@@ -193,9 +193,14 @@ class MolmoAct2Policy(PreTrainedPolicy):
     def __init__(self, config: MolmoAct2Config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         del inputs, kwargs
-        if self.config.action_mode not in {"continuous", "discrete"}:
+        if self.config.inference_action_mode is None:
             raise ValueError(
-                f"Unsupported action_mode={self.config.action_mode!r}. "
+                "MolmoAct2Policy requires `inference_action_mode` to be set "
+                "explicitly to either 'continuous' or 'discrete'."
+            )
+        if self.config.inference_action_mode not in {"continuous", "discrete"}:
+            raise ValueError(
+                f"Unsupported inference_action_mode={self.config.inference_action_mode!r}. "
                 "Expected one of {'continuous', 'discrete'}."
             )
         if self.config.depth_mode is not None and int(self.config.depth_mode) not in {1, 2}:
@@ -225,11 +230,11 @@ class MolmoAct2Policy(PreTrainedPolicy):
         ).to(device)
         self.model.eval()
         self.action_tokenizer = None
-        if self.config.action_mode == "discrete":
+        if self.config.inference_action_mode == "discrete":
             tokenizer_name = str(self.config.discrete_action_tokenizer or "").strip()
             if not tokenizer_name:
                 raise ValueError(
-                    "MolmoAct2Policy with action_mode='discrete' requires "
+                    "MolmoAct2Policy with inference_action_mode='discrete' requires "
                     "`discrete_action_tokenizer` to be provided."
                 )
             self.action_tokenizer = AutoProcessor.from_pretrained(
@@ -375,7 +380,7 @@ class MolmoAct2Policy(PreTrainedPolicy):
                         "task": self._extract_task(obs),
                         "state": self._extract_state(obs),
                         "norm_tag": requested_norm_tag,
-                        "action_mode": str(self.config.action_mode),
+                        "inference_action_mode": str(self.config.inference_action_mode),
                         "enable_depth_reasoning": enable_depth_reasoning,
                         "enable_adaptive_depth": enable_adaptive_depth,
                         "depth_cache": depth_cache,

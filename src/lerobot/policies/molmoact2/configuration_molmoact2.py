@@ -14,7 +14,7 @@ class MolmoAct2Config(PreTrainedConfig):
 
     checkpoint_path: str = ""
     num_steps: int | None = None
-    action_mode: str = "continuous"
+    inference_action_mode: str | None = None
     discrete_action_tokenizer: str | None = None
     discrete_generation_max_steps: int = 128
     enable_depth_reasoning: bool = False

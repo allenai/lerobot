@@ -147,7 +147,7 @@ export HF_TOKEN=<your_fine_grained_hf_token>
 lerobot-eval \
   --policy.type=molmoact2 \
   --policy.checkpoint_path=allenai/MolmoAct2-LIBERO \
-  --policy.action_mode=continuous \
+  --policy.inference_action_mode=continuous \
   --policy.enable_cuda_graph=True \
   --policy.norm_tag=libero \
   --policy.device=cuda \
@@ -161,7 +161,7 @@ lerobot-eval \
 lerobot-eval \
   --policy.type=molmoact2 \
   --policy.checkpoint_path=allenai/MolmoAct2-Think-LIBERO \
-  --policy.action_mode=continuous \
+  --policy.inference_action_mode=continuous \
   --policy.enable_depth_reasoning=True \
   --policy.enable_adaptive_depth=True \
   --policy.enable_cuda_graph=True \
