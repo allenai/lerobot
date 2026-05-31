@@ -33,7 +33,7 @@ from lerobot.optim import (
     LRSchedulerConfig,
     OptimizerConfig,
 )
-from lerobot.utils.constants import ACTION, OBS_STATE
+from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
 
 from ..rtc.configuration_rtc import RTCConfig
 
@@ -114,6 +114,20 @@ def _load_hf_norm_metadata_for_tag(
     return metadata
 
 
+def _stats_dim(stats: Any) -> int | None:
+    if not isinstance(stats, dict):
+        return None
+    for key in ("q01", "q99", "mean", "std", "min", "max"):
+        values = stats.get(key)
+        if values is None:
+            continue
+        try:
+            return int(len(values))
+        except TypeError:
+            continue
+    return None
+
+
 @LRSchedulerConfig.register_subclass("molmoact2_cosine_decay_with_warmup")
 @dataclass
 class MolmoAct2CosineDecayWithWarmupSchedulerConfig(CosineDecayWithWarmupSchedulerConfig):
@@ -192,7 +206,7 @@ class MolmoAct2Config(PreTrainedConfig):
     n_action_steps: int = 30
 
     action_mode: str = "both"
-    inference_action_mode: str | None = None
+    inference_action_mode: str | None = "continuous"
     discrete_action_tokenizer: str = "allenai/MolmoAct2-FAST-Tokenizer"
     discrete_generation_max_steps: int | None = None
     norm_tag: str | None = None
@@ -444,10 +458,54 @@ class MolmoAct2Config(PreTrainedConfig):
             self.chunk_size = int(metadata["action_horizon"])
         if metadata.get("n_action_steps") is not None:
             self.n_action_steps = int(metadata["n_action_steps"])
+        state_dim = _stats_dim(metadata.get("state_stats"))
+        if state_dim is not None and OBS_STATE not in self.input_features:
+            self.input_features[OBS_STATE] = PolicyFeature(
+                type=FeatureType.STATE,
+                shape=(state_dim,),
+            )
+        action_dim = _stats_dim(metadata.get("action_stats"))
+        if action_dim is not None and ACTION not in self.output_features:
+            self.output_features[ACTION] = PolicyFeature(
+                type=FeatureType.ACTION,
+                shape=(action_dim,),
+            )
         if not self.setup_type and metadata.get("setup_type") is not None:
             self.setup_type = str(metadata["setup_type"])
         if not self.control_mode and metadata.get("control_mode") is not None:
             self.control_mode = str(metadata["control_mode"])
+        if not self.image_keys and isinstance(metadata.get("camera_keys"), list):
+            self.image_keys = [str(key) for key in metadata["camera_keys"]]
+
+    @staticmethod
+    def _policy_feature_from_async_feature(key: str, feature: dict[str, Any]) -> PolicyFeature | None:
+        shape = feature.get("shape")
+        if shape is None:
+            return None
+        shape = tuple(int(dim) for dim in shape)
+        if key == OBS_STATE:
+            return PolicyFeature(type=FeatureType.STATE, shape=shape)
+        if key.startswith(f"{OBS_IMAGES}."):
+            if len(shape) == 3 and shape[-1] in {1, 3, 4}:
+                shape = (shape[-1], shape[0], shape[1])
+            return PolicyFeature(type=FeatureType.VISUAL, shape=shape)
+        return None
+
+    def apply_async_lerobot_features(self, lerobot_features: dict[str, Any]) -> None:
+        """Fill missing input feature shapes from async robot specs."""
+        input_features = dict(self.input_features or {})
+        for key, feature in lerobot_features.items():
+            if key in input_features or not isinstance(feature, dict):
+                continue
+            policy_feature = self._policy_feature_from_async_feature(key, feature)
+            if policy_feature is not None:
+                input_features[key] = policy_feature
+        self.input_features = input_features
+
+    def async_processor_pretrained_path(self, pretrained_path: str) -> str | None:
+        if getattr(self, "_uses_original_hf_checkpoint", False):
+            return None
+        return pretrained_path
 
     def saved_policy_action_mode(self) -> str | None:
         pretrained_path = getattr(self, "pretrained_path", None)
@@ -510,10 +568,7 @@ class MolmoAct2Config(PreTrainedConfig):
         if requested_mode is None:
             requested_mode = self.inference_action_mode
         if requested_mode is None:
-            raise ValueError(
-                "MolmoAct2 inference requires `inference_action_mode` to be set explicitly "
-                "to either 'continuous' or 'discrete'."
-            )
+            requested_mode = "continuous"
         if requested_mode not in {"continuous", "discrete"}:
             raise ValueError("MolmoAct2 inference_action_mode must be either 'continuous' or 'discrete'.")
         if requested_mode == "continuous" and training_mode == "discrete":
